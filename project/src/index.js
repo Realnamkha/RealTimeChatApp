@@ -1,0 +1,175 @@
+import websocket from "websocket";
+import http from "http";
+import {
+  SupportedMessage,
+  IncomingMessage,
+} from "./Messages/Incomingmessages.js";
+import { UserManager } from "./UserManager.js";
+import { Store } from "./Store/Store.js";
+import {
+  createOutgoingAddChatMessage,
+  createOutgoingUpdateChatMessage,
+} from "./Messages/Outgoingmessages.js";
+
+// Destructure `server` from the websocket package
+const { server: WebSocketServer } = websocket;
+
+// Create the HTTP server
+const server = http.createServer((request, response) => {
+  console.log(new Date() + " Received request for " + request.url);
+  response.writeHead(404);
+  response.end();
+});
+
+const userManager = new UserManager();
+const store = new Store();
+
+server.listen(8080, () => {
+  console.log(new Date() + " Server is listening on port 8080");
+});
+
+const wsServer = new WebSocketServer({
+  httpServer: server,
+  autoAcceptConnections: false,
+});
+
+function originIsAllowed(origin) {
+  return true;
+}
+
+wsServer.on("request", (request) => {
+  if (!originIsAllowed(request.origin)) {
+    request.reject();
+    console.log(
+      new Date() + " Connection from origin " + request.origin + " rejected."
+    );
+    return;
+  }
+
+  const connection = request.accept(null, request.origin);
+  console.log(new Date() + " Connection accepted.");
+
+  connection.on("message", (message) => {
+    if (message.type === "utf8") {
+      try {
+        messageHandler(connection, JSON.parse(message.utf8Data));
+      } catch (error) {
+        console.error("Failed to parse message", error);
+      }
+    } else if (message.type === "binary") {
+      console.log(
+        "Received Binary Message of " + message.binaryData.length + " bytes"
+      );
+      connection.sendBytes(message.binaryData);
+    }
+  });
+
+  connection.on("close", (reasonCode, description) => {
+    console.log(
+      new Date() + " Peer " + connection.remoteAddress + " disconnected."
+    );
+  });
+});
+
+// Handles different types of messages
+function messageHandler(websocket, rawMessage) {
+  console.log("Received raw message:", rawMessage);
+
+  const result = IncomingMessage.safeParse(rawMessage);
+
+  if (!result.success) {
+    console.error("Invalid message received:", result.error);
+    return;
+  }
+
+  const message = result.data;
+  console.log("Parsed message:", message);
+
+  switch (message.type) {
+    case SupportedMessage.JoinRoom: {
+      const { name, userId, roomId } = message.payload;
+      console.log(
+        `JoinRoom message payload: name=${name}, userId=${userId}, roomId=${roomId}`
+      );
+
+      try {
+        userManager.addUser(name, userId, roomId, websocket);
+        console.log(`${name} joined room ${roomId}`);
+      } catch (e) {
+        console.error("Error adding user:", e);
+      }
+      break;
+    }
+
+    case SupportedMessage.SendMessage: {
+      const { userId, roomId, message: text } = message.payload;
+      console.log(
+        `SendMessage payload: userId=${userId}, roomId=${roomId}, message=${text}`
+      );
+
+      try {
+        const user = userManager.getUser(roomId, userId);
+        if (!user) {
+          console.error("User not found in db");
+          return;
+        }
+        console.log("User found:", user);
+
+        const chat = store.addChat(userId, user, roomId, text);
+        if (!chat) {
+          console.error("Failed to add chat");
+          return;
+        }
+
+        console.log(`Chat added:`, chat);
+
+        const outgoingPayload = createOutgoingAddChatMessage({
+          chatId: chat.id,
+          roomId,
+          message: text,
+          name: user.name,
+          upvotes: 0,
+        });
+
+        userManager.broadcast(roomId, userId, outgoingPayload);
+        console.log("Broadcasted AddChat message:", outgoingPayload);
+      } catch (e) {
+        console.error("Error handling SendMessage:", e);
+      }
+      break;
+    }
+
+    case SupportedMessage.UpvoteMessage: {
+      const { userId, roomId, chatId } = message.payload;
+      console.log(
+        `UpvoteMessage payload: userId=${userId}, roomId=${roomId}, chatId=${chatId}`
+      );
+
+      try {
+        const chat = store.upvote(userId, roomId, chatId);
+
+        if (!chat) {
+          console.error("Chat not found or upvote failed");
+          return;
+        }
+
+        console.log("Chat after upvote:", chat);
+
+        const outgoingPayload = createOutgoingUpdateChatMessage({
+          chatId,
+          roomId,
+          upvotes: chat.upvotes.length,
+        });
+
+        userManager.broadcast(roomId, userId, outgoingPayload);
+        console.log("Broadcasted UpdateChat message:", outgoingPayload);
+      } catch (e) {
+        console.error("Error handling UpvoteMessage:", e);
+      }
+      break;
+    }
+
+    default:
+      console.warn("Unhandled message type:", message.type);
+  }
+}
