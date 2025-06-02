@@ -5,7 +5,7 @@ import {
   IncomingMessage,
 } from "./Messages/Incomingmessages.js";
 import { UserManager } from "./UserManager.js";
-import { Store } from "./Store/Store.js";
+import { InMemoryStore } from "./Store/InmemoryStore.js";
 import {
   createOutgoingAddChatMessage,
   createOutgoingUpdateChatMessage,
@@ -22,7 +22,7 @@ const server = http.createServer((request, response) => {
 });
 
 const userManager = new UserManager();
-const store = new Store();
+const store = new InMemoryStore();
 
 server.listen(8080, () => {
   console.log(new Date() + " Server is listening on port 8080");
@@ -63,12 +63,6 @@ wsServer.on("request", (request) => {
       connection.sendBytes(message.binaryData);
     }
   });
-
-  connection.on("close", (reasonCode, description) => {
-    console.log(
-      new Date() + " Peer " + connection.remoteAddress + " disconnected."
-    );
-  });
 });
 
 // Handles different types of messages
@@ -102,6 +96,7 @@ function messageHandler(websocket, rawMessage) {
     }
 
     case SupportedMessage.SendMessage: {
+      console.log("Full incoming message:", message);
       const { userId, roomId, message: text } = message.payload;
       console.log(
         `SendMessage payload: userId=${userId}, roomId=${roomId}, message=${text}`
@@ -113,9 +108,16 @@ function messageHandler(websocket, rawMessage) {
           console.error("User not found in db");
           return;
         }
-        console.log("User found:", user);
+        console.log("User found:", user.name);
 
-        const chat = store.addChat(userId, user, roomId, text);
+        // ✅ FIXED: pass user.name instead of whole user object
+        console.log("Calling addChat with:", {
+          userId,
+          name: user.name,
+          roomId,
+          message: text,
+        });
+        const chat = store.addChat(userId, user.name, roomId, text);
         if (!chat) {
           console.error("Failed to add chat");
           return;
@@ -158,7 +160,7 @@ function messageHandler(websocket, rawMessage) {
         const outgoingPayload = createOutgoingUpdateChatMessage({
           chatId,
           roomId,
-          upvotes: chat.upvotes.length,
+          upvotes: chat.upvotes,
         });
 
         userManager.broadcast(roomId, userId, outgoingPayload);

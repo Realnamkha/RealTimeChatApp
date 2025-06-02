@@ -7,9 +7,16 @@ export const chat = {
 };
 
 export class Store {
-  constructor() {}
-  initRoom(roomId) {}
-  getChats(roomId, limit, offset) {}
-  addChat(userId, name, roomId, message) {}
-  upvote(userId, name, roomId) {}
+  initRoom(roomId) {
+    throw new Error("Not implemented");
+  }
+  getChats(roomId, limit, offset) {
+    throw new Error("Not implemented");
+  }
+  addChat(userId, name, roomId, message) {
+    throw new Error("Not implemented");
+  }
+  upvote(userId, roomId, chatId) {
+    throw new Error("Not implemented");
+  }
 }

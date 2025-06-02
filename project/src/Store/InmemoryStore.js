@@ -1,55 +1,57 @@
-import { Store } from "./Store";
-import { chat } from "./Store";
-let globalChatId = "0";
-export const Room = {
-  roomId: "room1",
-  chats: [chat],
-};
+import { Store } from "./Store.js";
+let globalChatId = 0;
 
-export class InmemoryStore {
+export class InMemoryStore extends Store {
   constructor() {
-    this.store = new Map();
-  }
-  initRoom(roomId) {
-    this.store.set(roomId, {
-      roomId,
-      chats: [],
-    });
+    super();
+    this.rooms = new Map();
   }
 
-  // last 50 chats - limit 50 offset-0
-  getChats(roomId, limit, offset) {
-    const room = this.store.get(roomId);
-    if (!room) {
-      return [];
+  initRoom(roomId) {
+    if (!this.rooms.has(roomId)) {
+      this.rooms.set(roomId, { roomId, chats: [] });
     }
-    return room.chats
-      .reverse()
-      .slice(0, offset)
-      .slice(-1 * limit);
   }
+
+  getChats(roomId, limit, offset) {
+    const room = this.rooms.get(roomId);
+    if (!room) return [];
+
+    const chats = [...room.chats].reverse();
+    return chats.slice(offset, offset + limit);
+  }
+
   addChat(userId, name, roomId, message) {
-    const room = this.store.get(roomId);
-    if (!room) {
-      return [];
+    if (!this.rooms.has(roomId)) {
+      this.initRoom(roomId);
     }
+    const room = this.rooms.get(roomId);
+    if (!room) return null;
+
     const chat = {
       id: (globalChatId++).toString(),
-      userId: userId,
-      name: name,
-      message: message,
+      userId,
+      name,
+      message,
       upvotes: [],
     };
+
     room.chats.push(chat);
     return chat;
   }
+
   upvote(userId, roomId, chatId) {
-    const room = this.store.get(roomId);
+    const room = this.rooms.get(roomId);
     if (!room) {
       return;
     }
-    const chat = room.chats.find(({ id }) => id === chatId);
+
+    const chat = room.chats.find((chat) => chat.id === chatId);
+
     if (chat) {
+      if (chat.upvotes.find((x) => x === userId)) {
+        return chat;
+      }
       chat.upvotes.push(userId);
     }
     return chat;

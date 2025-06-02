@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 // Constants
-export const JOIN_ROOM = "JOIN ROOM";
+export const JOIN_ROOM = "JOIN_ROOM";
 export const SEND_MESSAGE = "SEND_MESSAGE";
 export const UPVOTE_MESSAGE = "UPVOTE_MESSAGE";
 
