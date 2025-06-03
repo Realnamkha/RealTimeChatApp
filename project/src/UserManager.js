@@ -38,16 +38,25 @@ export class UserManager {
     return this.rooms.get(roomId)?.users.find(({ id }) => id === idStr) ?? null;
   }
 
-  broadcast(roomId, senderUserId, message) {
-    const idStr = senderUserId.toString();
-    const room = this.rooms.get(roomId);
-    if (!room) {
-      console.log("Room not found for broadcast");
+  broadcast(roomId, userId, message) {
+    const user = this.getUser(roomId, userId);
+    if (!user) {
+      console.error("User not found");
       return;
     }
 
-    room.users.forEach(({ conn }) => {
-      console.log("broadcast to everone");
+    const room = this.rooms.get(roomId);
+    if (!room) {
+      console.error("Room not found");
+      return;
+    }
+
+    room.users.forEach(({ conn, id }) => {
+      if (id === userId) {
+        // Skip sending the message back to the sender
+        return;
+      }
+      console.log("Sending outgoing message:", JSON.stringify(message));
       conn.sendUTF(JSON.stringify(message));
     });
   }
