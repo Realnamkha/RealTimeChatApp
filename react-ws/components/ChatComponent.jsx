@@ -153,7 +153,7 @@ export default function MyComponent({
   }, []);
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg shadow dark:bg-gray-800 dark:border-gray-700 p-2 space-y-4">
+    <div className="bg-white border border-gray-200 min-h-screen rounded-lg shadow dark:bg-gray-800 dark:border-gray-700 p-2 space-y-4">
       <div className="text-center">Chat</div>
       <div className="flex border min-w-[900px] rounded-md">
         {/* All Chat */}
