@@ -1,5 +1,8 @@
 import websocket from "websocket";
 import http from "http";
+import dotenv from "dotenv";
+import { app } from "./app.js";
+import { connectToDatabase, prisma } from "./db/prismaClient.js";
 import {
   SupportedMessage,
   IncomingMessage,
@@ -14,25 +17,30 @@ import {
 // Destructure `server` from the websocket package
 const { server: WebSocketServer } = websocket;
 
-// Create the HTTP server
-const server = http.createServer((request, response) => {
-  console.log(new Date() + " Received request for " + request.url);
-  response.writeHead(404);
-  response.end();
+dotenv.config({
+  path: "./.env",
 });
+
+const PORT = process.env.PORT || 8001;
 
 const userManager = new UserManager();
 const store = new InMemoryStore();
-
-server.listen(8080, () => {
-  console.log(new Date() + " Server is listening on port 8080");
-});
-
+// Create the HTTP server
+const server = http.createServer(app);
 const wsServer = new WebSocketServer({
   httpServer: server,
   autoAcceptConnections: false,
 });
-
+connectToDatabase()
+  .then(() => {
+    server.listen(PORT, () => {
+      console.log(`Server and WebSocket running on port ${PORT}`);
+    });
+  })
+  .catch((err) => {
+    console.error("Prisma connection error:", err);
+    process.exit(1);
+  });
 function originIsAllowed(origin) {
   return true;
 }

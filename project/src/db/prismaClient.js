@@ -1,22 +1,15 @@
 import { PrismaClient } from "../generated/prisma/index.js";
 
-// Create a single PrismaClient instance
 const prisma = new PrismaClient();
 
-// Export the instance to be used elsewhere
-export default prisma;
-async function testPrisma() {
+export async function connectToDatabase() {
   try {
-    // Try to fetch all users from the database
-    const users = await prisma.user.findMany();
-
-    console.log("Users fetched from DB:", users);
+    await prisma.$connect();
+    console.log("Prisma connected to the database successfully!");
   } catch (error) {
-    console.error("Error querying database:", error);
-  } finally {
-    // Disconnect Prisma client after query to prevent hanging
-    await prisma.$disconnect();
+    console.error("Error connecting to the database:", error);
+    process.exit(1); // Optional: exit app if DB fails
   }
 }
 
-testPrisma();
+export { prisma };
