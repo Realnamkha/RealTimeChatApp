@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import "./App.css";
-import MyComponent from "../components/ChatComponent.jsx";
+import MyComponent from "./components/chat/ChatComponent.jsx";
 
 function App() {
   return (
