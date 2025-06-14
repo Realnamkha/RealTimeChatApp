@@ -1,21 +1,36 @@
+import { PrismaStore } from "./Store/prismaStore.js";
+
 export class UserManager {
-  constructor() {
-    this.rooms = new Map();
+  constructor(prismaStore) {
+    this.prismaStore = prismaStore;
+    this.rooms = new Map(); // { roomId: { users: [{ id, name, conn }] } }
   }
 
-  addUser(name, userId, roomId, socket) {
+  async addUser(name, userId, roomId, socket) {
     const idStr = userId.toString();
 
+    // Add user to DB relation
+    try {
+      await this.prismaStore.addUserToRoom(userId, roomId);
+    } catch (err) {
+      console.error(`Failed to add user ${userId} to room ${roomId} in DB:`, err);
+    }
+
+    // Initialize room if it doesn't exist in memory
     if (!this.rooms.has(roomId)) {
       this.rooms.set(roomId, { users: [] });
     }
 
+    // Add user to room in memory
     this.rooms.get(roomId).users.push({
       id: idStr,
       name,
       conn: socket,
     });
 
+    console.log(`User ${name} (${idStr}) joined room ${roomId}`);
+
+    // Handle socket close (user disconnect)
     socket.on("close", () => {
       this.removeUser(roomId, idStr);
     });
@@ -23,41 +38,43 @@ export class UserManager {
 
   removeUser(roomId, userId) {
     const idStr = userId.toString();
-    const users = this.rooms.get(roomId)?.users;
-    if (users) {
-      this.rooms.get(roomId).users = users.filter(({ id }) => id !== idStr);
-      if (this.rooms.get(roomId).users.length === 0) {
-        this.rooms.delete(roomId); // Optional: clean up empty rooms
-      }
+    const room = this.rooms.get(roomId);
+
+    if (!room) return;
+
+    room.users = room.users.filter(({ id }) => id !== idStr);
+
+    if (room.users.length === 0) {
+      this.rooms.delete(roomId); // Optional: clean up empty room
+      console.log(`Room ${roomId} cleaned up (no more users).`);
     }
+
     console.log(`Removed user ${idStr} from room ${roomId}`);
   }
 
   getUser(roomId, userId) {
     const idStr = userId.toString();
-    return this.rooms.get(roomId)?.users.find(({ id }) => id === idStr) ?? null;
+    const room = this.rooms.get(roomId);
+    return room?.users.find(({ id }) => id === idStr) ?? null;
   }
 
   broadcast(roomId, userId, message) {
-    const user = this.getUser(roomId, userId);
-    if (!user) {
-      console.error("User not found");
-      return;
-    }
-
     const room = this.rooms.get(roomId);
+
     if (!room) {
-      console.error("Room not found");
+      console.error(`Room ${roomId} not found in memory`);
       return;
     }
 
     room.users.forEach(({ conn, id }) => {
-      if (id === userId) {
-        // Skip sending the message back to the sender
-        return;
+      if (id === userId) return; // Skip sender
+
+      try {
+        conn.sendUTF(JSON.stringify(message));
+        console.log(`Sent message to user ${id} in room ${roomId}`);
+      } catch (err) {
+        console.error(`Failed to send message to user ${id}:`, err);
       }
-      console.log("Sending outgoing message:", JSON.stringify(message));
-      conn.sendUTF(JSON.stringify(message));
     });
   }
 }

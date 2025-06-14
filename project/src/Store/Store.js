@@ -19,4 +19,7 @@ export class Store {
   upvote(userId, roomId, chatId) {
     throw new Error("Not implemented");
   }
+  addUserToRoom(userId, roomId) {
+    throw new Error("Not implemented");
+  }
 }

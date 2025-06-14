@@ -3,16 +3,13 @@ import http from "http";
 import dotenv from "dotenv";
 import { app } from "./app.js";
 import { connectToDatabase, prisma } from "./db/prismaClient.js";
-import {
-  SupportedMessage,
-  IncomingMessage,
-} from "./Messages/Incomingmessages.js";
+import { SupportedMessage, IncomingMessage } from "./Messages/Incomingmessages.js";
 import { UserManager } from "./UserManager.js";
 import { InMemoryStore } from "./Store/InmemoryStore.js";
-import {
-  createOutgoingAddChatMessage,
-  createOutgoingUpdateChatMessage,
-} from "./Messages/Outgoingmessages.js";
+import jwt from "jsonwebtoken";
+import { createOutgoingAddChatMessage, createOutgoingUpdateChatMessage } from "./Messages/Outgoingmessages.js";
+import { PrismaStore } from "./Store/prismaStore.js";
+import cookie from "cookie";
 
 // Destructure `server` from the websocket package
 const { server: WebSocketServer } = websocket;
@@ -23,8 +20,10 @@ dotenv.config({
 
 const PORT = process.env.PORT || 8001;
 
-const userManager = new UserManager();
-const store = new InMemoryStore();
+const prismaStore = new PrismaStore();
+const userManager = new UserManager(prismaStore);
+// const userManager = new UserManager();
+// const store = new InMemoryStore();
 // Create the HTTP server
 const server = http.createServer(app);
 const wsServer = new WebSocketServer({
@@ -45,36 +44,48 @@ function originIsAllowed(origin) {
   return true;
 }
 
-wsServer.on("request", (request) => {
-  if (!originIsAllowed(request.origin)) {
-    request.reject();
-    console.log(
-      new Date() + " Connection from origin " + request.origin + " rejected."
-    );
+wsServer.on("request", async (request) => {
+  // Parse cookies from request headers
+  const cookies = cookie.parse(request.httpRequest.headers.cookie || "");
+  const token = cookies.accessToken; // get token from cookie named "accessToken"
+
+  console.log("🌐 Incoming WebSocket request");
+  console.log("🔐 Extracted token from cookie:", token);
+
+  if (!token) {
+    console.warn("❌ No token found in cookies. Rejecting.");
+    request.reject(401, "Unauthorized: Token missing");
+    return;
+  }
+
+  let user;
+  try {
+    user = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
+    console.log("✅ Token verified successfully:", user);
+  } catch (err) {
+    console.error("❌ JWT verification failed:", err.message);
+    request.reject(401, "Unauthorized: Invalid token");
     return;
   }
 
   const connection = request.accept(null, request.origin);
-  console.log(new Date() + " Connection accepted.");
+  console.log(`✅ Connection accepted for user: ${user.username}`);
+
+  connection.user = user;
 
   connection.on("message", (message) => {
     if (message.type === "utf8") {
       try {
         messageHandler(connection, JSON.parse(message.utf8Data));
       } catch (error) {
-        console.error("Failed to parse message", error);
+        console.error("❌ Failed to parse message:", error.message);
       }
-    } else if (message.type === "binary") {
-      console.log(
-        "Received Binary Message of " + message.binaryData.length + " bytes"
-      );
-      connection.sendBytes(message.binaryData);
     }
   });
 });
 
 // Handles different types of messages
-function messageHandler(websocket, rawMessage) {
+async function messageHandler(websocket, rawMessage) {
   console.log("Received raw message:", rawMessage);
 
   const result = IncomingMessage.safeParse(rawMessage);
@@ -90,12 +101,10 @@ function messageHandler(websocket, rawMessage) {
   switch (message.type) {
     case SupportedMessage.JoinRoom: {
       const { name, userId, roomId } = message.payload;
-      console.log(
-        `JoinRoom message payload: name=${name}, userId=${userId}, roomId=${roomId}`
-      );
+      console.log(`JoinRoom message payload: name=${name}, userId=${userId}, roomId=${roomId}`);
 
       try {
-        userManager.addUser(name, userId, roomId, websocket);
+        await userManager.addUser(name, userId, roomId, websocket);
         console.log(`${name} joined room ${roomId}`);
       } catch (e) {
         console.error("Error adding user:", e);
@@ -106,9 +115,7 @@ function messageHandler(websocket, rawMessage) {
     case SupportedMessage.SendMessage: {
       console.log("Full incoming message:", message);
       const { userId, roomId, message: text } = message.payload;
-      console.log(
-        `SendMessage payload: userId=${userId}, roomId=${roomId}, message=${text}`
-      );
+      console.log(`SendMessage payload: userId=${userId}, roomId=${roomId}, message=${text}`);
 
       try {
         const user = userManager.getUser(roomId, userId);
@@ -121,11 +128,10 @@ function messageHandler(websocket, rawMessage) {
         // ✅ FIXED: pass user.name instead of whole user object
         console.log("Calling addChat with:", {
           userId,
-          name: user.name,
           roomId,
           message: text,
         });
-        const chat = store.addChat(userId, user.name, roomId, text);
+        const chat = await prismaStore.addChat(userId, roomId, text);
         if (!chat) {
           console.error("Failed to add chat");
           return;
@@ -151,9 +157,7 @@ function messageHandler(websocket, rawMessage) {
 
     case SupportedMessage.UpvoteMessage: {
       const { userId, roomId, chatId } = message.payload;
-      console.log(
-        `UpvoteMessage payload: userId=${userId}, roomId=${roomId}, chatId=${chatId}`
-      );
+      console.log(`UpvoteMessage payload: userId=${userId}, roomId=${roomId}, chatId=${chatId}`);
 
       try {
         const chat = store.upvote(userId, roomId, chatId);

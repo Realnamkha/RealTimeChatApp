@@ -4,6 +4,7 @@ import { ApiResponse } from "../utils/apiResponse.js";
 import { ApiError } from "../utils/apiError.js";
 import jwt from "jsonwebtoken";
 import { hashPassword, comparePassword, generateAccessToken, generateRefreshToken } from "../utils/auth.js";
+import { access } from "fs/promises";
 
 const generateAccessAndRefreshToken = async (userId) => {
   try {
@@ -32,6 +33,24 @@ const generateAccessAndRefreshToken = async (userId) => {
     throw new ApiError(500, "Something went wrong while generating tokens");
   }
 };
+
+export const getAccessToken = asyncHandler(async (req, res) => {
+  const token = req.cookies.accessToken;
+
+  if (!token) {
+    throw new ApiError(401, "Access token not found in cookies");
+  }
+
+  try {
+    // Verify token to ensure it's valid
+    jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
+
+    // Return the raw token string in JSON response
+    return res.status(200).json(new ApiResponse(200, { accessToken: token }, "Access token retrieved successfully"));
+  } catch (error) {
+    throw new ApiError(401, "Invalid or expired access token");
+  }
+});
 
 export const refreshToken = asyncHandler(async (req, res) => {
   const incomingRefreshToken = req.cookies.refreshToken || req.body.refreshToken;
