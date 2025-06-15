@@ -40,6 +40,12 @@ export default function Home() {
   };
 
   const handleInitialClick = () => {
+    console.log("User from useAuth:", user);
+    if (!user) {
+      // Not logged in, redirect to login
+      navigate("/login");
+      return;
+    }
     setShowInput(true);
   };
 

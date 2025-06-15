@@ -7,7 +7,6 @@ export const Authprovider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Define fetchUser outside useEffect so it can be called on demand
   const fetchUser = async () => {
     setLoading(true);
     try {
@@ -24,18 +23,6 @@ export const Authprovider = ({ children }) => {
 
   useEffect(() => {
     fetchUser();
-
-    // Listen for auth-event changes in localStorage to sync across tabs
-    const handleStorageChange = (event) => {
-      if (event.key === "auth-event") {
-        fetchUser();
-      }
-    };
-
-    window.addEventListener("storage", handleStorageChange);
-    return () => {
-      window.removeEventListener("storage", handleStorageChange);
-    };
   }, []);
 
   const logout = async () => {
@@ -45,13 +32,11 @@ export const Authprovider = ({ children }) => {
       console.error("Logout failed:", err);
     }
     setUser(null);
-    // Notify other tabs about logout
-    localStorage.setItem("auth-event", Date.now());
   };
 
   return (
     <AuthContext.Provider value={{ user, loading, setUser, logout }}>
-      {children}
+      {!loading && children}
     </AuthContext.Provider>
   );
 };
